@@ -21,7 +21,8 @@ Do not run it in production or on the system that has any value. You have been w
 anyway, because linux2free.sh downloads files from Internet
 2. Currently the linux2free.sh script supports UEFI only boot. Sorry for MBR scheme,
 perhaps someday I'll add it (or not)
-3. Only Redhat based Linux distributions are supported
+3. Only Redhat based Linux distributions are supported at the moment. Debian 
+will come someday (probably)
 4. The resulted FreeBSD system is very minimalistic. It uses a simple custom 
 starup scripts to bring up network interfaces and start sshd, you have to 
 configure the system and install additional packages yourself
@@ -31,6 +32,7 @@ redistributed manually.
 
 ## Installation
 
+On Linux machine run:
 ```
 sudo dnf upgrade -y
 reboot
