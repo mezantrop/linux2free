@@ -18,10 +18,11 @@ Do not run it in production or on the system that has any value. You have been w
 1. Network connection required: linux2free.sh downloads files from Internet
 2. Currently the linux2free.sh script supports UEFI only boot. Sorry for MBR scheme,
 perhaps someday I'll add it (or not)
-3. The resulted FreeBSD system is very minimalistic. It uses a simple custom 
+3. Only Redhat based Linux distributions are supported
+4. The resulted FreeBSD system is very minimalistic. It uses a simple custom 
 starup scripts to bring up network interfaces and start sshd, you have to 
-configure the system and install additional packages yourself.
-4. linux2free created a boot EFI partition and a small ZFS filesystem for FreeBSD 
+configure the system and install additional packages yourself
+5. linux2free created a boot EFI partition and a small ZFS filesystem for FreeBSD 
 to start up, but the rest of the space formerly used by Linux has to be 
 redistributed manually.
 
