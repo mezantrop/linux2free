@@ -15,6 +15,11 @@
 # this stuff is worth it, you can buy me a beer in return.    Mikhail Zakharov #
 # ---------------------------------------------------------------------------- #
 
+# ---------------------------------------------------------------------------- # 
+# 2021.12.25  v0.1    Mikhail Zakharov  Initial version
+# 2021.12.26  v0.2    Mikhail Zakharov  SSH root login, default route, resolver
+# ---------------------------------------------------------------------------- #
+
 trap "exit 1" TERM
 export L2FPID=$$
 
@@ -91,13 +96,22 @@ install_freebsd() {
     cp "$freebsd_zfs"/boot/loader.efi "$freebsd_efi"/EFI/BOOT/BOOTX64.efi
 
     echo zfs_load="YES" >> "$freebsd_zfs"/boot/loader.conf
+
     echo hostname="fbsd" >> "$freebsd_zfs"/etc/rc.conf
     echo zfs_enable="YES" >> "$freebsd_zfs"/etc/rc.conf
     echo sshd_enable="YES" >> "$freebsd_zfs"/etc/rc.conf
+    echo sendmail_msp_queue_enable="NO" >> "$freebsd_zfs"/etc/rc.conf
+    echo sendmail_outbound_enable="NO" >> "$freebsd_zfs"/etc/rc.conf
 
+    echo UseDNS no >> "$freebsd_zfs"/etc/ssh/sshd_config
+    echo UsePAM no >> "$freebsd_zfs"/etc/ssh/sshd_config
+    echo PermitRootLogin yes >> "$freebsd_zfs"/etc/ssh/sshd_config
+    echo PermitEmptyPasswords yes >> "$freebsd_zfs"/etc/ssh/sshd_config
+    echo PasswordAuthentication yes >> "$freebsd_zfs"/etc/ssh/sshd_config
+    cp /etc/resolv.conf "$freebsd_zfs"/etc
+    
     efibootmgr -c -l '\EFI\BOOT\bootx64.efi' -L FreeBSD
 
-    touch "$freebsd_zfs"/etc/rc.local
     chmod 755 "$freebsd_zfs"/etc/rc.local
     # Configure network interfaces
     # TODO: Add default routing, I forgot about, he-he-he, ouch :( 
@@ -115,7 +129,11 @@ install_freebsd() {
                 ifconfig \$i inet6 $iface_ipv6
             }
     done
+
+    route add default $deftrouter
 EOF
+    touch "$freebsd_zfs"/etc/fstab
+
 }
 
 do_debian() {
@@ -137,6 +155,7 @@ do_redhat() {
     # Snip network parameters
     # TODO: utilize chk_cmd() to select either ip or ifconfig in the future 
     iface_name=`ip route show default | awk '/default/ {print $5}'`
+    deftrouter=`ip route show default | awk '/default/ {print $3}'`
     iface_ipv4=`ifconfig $iface_name | awk '$1 == "inet" {print $2}'`
     iface_ipv6=`ifconfig $iface_name | awk '$1 == "inet6" {print $2; exit 0}'`
     iface_mac=`cat /sys/class/net/"$iface_name"/address`
@@ -222,7 +241,7 @@ case "$release_family" in
         do_redhat ;;
 esac
 
-printf "Press ENTER to reboot into FreeBSD or hit ^C if you forgot something to do!\n"
-printf "Think twice, because this might be your last chance to do it!\m"
+printf "\nPress ENTER to reboot into FreeBSD or hit ^C if you forgot something!\n"
+printf "Think twice, this might be your last chance to do it!\n"
 read
 reboot
