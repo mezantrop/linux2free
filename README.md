@@ -1,5 +1,5 @@
-# Linux to FreeBSD upgrade script
-## linux2free.sh overwrites your Linux with FreeBSD
+# Remote Linux to FreeBSD upgrade script
+## linux2free.sh overwrites your Linux with FreeBSD over SSH connection
 
 Time runs fast, MBR evolved to GPT, BIOS to UEFI and I followed the footsteps 
 of good old Depenguinator 
@@ -17,7 +17,8 @@ a VirtualBOX machine.
 ## NOTES
 0. **The script is extremely dangerous, it can easily ruin your OS, data and life.
 Do not run it in production or on the system that has any value. You have been warned!**
-1. Network connection required: linux2free.sh downloads files from Internet
+1. The script can be run on console or via SSH, but network connection required 
+anyway, because linux2free.sh downloads files from Internet
 2. Currently the linux2free.sh script supports UEFI only boot. Sorry for MBR scheme,
 perhaps someday I'll add it (or not)
 3. Only Redhat based Linux distributions are supported
