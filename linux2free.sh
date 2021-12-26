@@ -112,7 +112,6 @@ install_freebsd() {
     
     efibootmgr -c -l '\EFI\BOOT\bootx64.efi' -L FreeBSD
 
-    chmod 755 "$freebsd_zfs"/etc/rc.local
     # Configure network interfaces
     # TODO: Add default routing, I forgot about, he-he-he, ouch :( 
     cat << EOF > "$freebsd_zfs"/etc/rc.local
@@ -132,8 +131,8 @@ install_freebsd() {
 
     route add default $deftrouter
 EOF
+    chmod 755 "$freebsd_zfs"/etc/rc.local
     touch "$freebsd_zfs"/etc/fstab
-
 }
 
 do_debian() {
@@ -143,6 +142,8 @@ do_debian() {
 }
 
 do_redhat() {
+    dnf upgrade -y  # We must be sure to have Kernel and ZFS modules in sync!
+
     # Install ZFS packages
     for m in `seq 10 -1 1`; do
         dnf -y install https://zfsonlinux.org/epel/zfs-release$(rpm -E %dist)_$m.noarch.rpm && break

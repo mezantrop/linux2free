@@ -28,7 +28,11 @@ redistributed manually.
 
 ## Installation
 
-`wget https://raw.githubusercontent.com/mezantrop/linux2free/master/linux2free.sh && sudo sh linux2free.sh`
+```
+sudo dnf upgrade -y
+reboot
+wget https://raw.githubusercontent.com/mezantrop/linux2free/master/linux2free.sh && sudo sh linux2free.sh
+```
 
 ## TODO
  - [x] Allow root to ssh in remotely
