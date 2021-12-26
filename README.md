@@ -12,6 +12,8 @@ a lot things to implement and many bugs to fix, but it ~~runs fine on my laptop~
 successfully installs FreeBSD 13.0 over the default CentOS Linux 8 on 
 a VirtualBOX machine.
 
+[![linux2free.sh in action](https://img.youtube.com/vi/q8GlmyK70VE/0.jpg)](https://www.youtube.com/watch?v=q8GlmyK70VE)
+
 ## NOTES
 0. **The script is extremely dangerous, it can easily ruin your OS, data and life.
 Do not run it in production or on the system that has any value. You have been warned!**
