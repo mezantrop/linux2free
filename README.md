@@ -3,8 +3,8 @@
 
 Time runs fast, MBR evolved to GPT, BIOS to UEFI and I followed the footsteps 
 of good old Depenguinator 
-([2.0]https://www.daemonology.net/blog/2008-01-29-depenguinator-2.0.html and 
-[3.0]https://github.com/allanjude/depenguinator) to bring some Christmas magic
+[2.0](https://www.daemonology.net/blog/2008-01-29-depenguinator-2.0.html) and 
+[3.0](https://github.com/allanjude/depenguinator) to bring some Christmas magic
 to the end of 2021 year.
 
 This is a very early draft, the script abilities are very limited, there are 
@@ -13,8 +13,8 @@ successfully installs FreeBSD 13.0 over the default CentOS Linux 8 on
 a VirtualBOX machine.
 
 ## NOTES
-0. *The script is extremely dangerous, it can easily ruin your OS, data and life.
-Do not run it in production or on the system that has any value. You have been warned!*
+0. **The script is extremely dangerous, it can easily ruin your OS, data and life.
+Do not run it in production or on the system that has any value. You have been warned!**
 1. Network connection required: linux2free.sh downloads files from Internet
 2. Currently the linux2free.sh script supports UEFI only boot. Sorry for MBR scheme,
 perhaps someday I'll add it (or not)
@@ -30,10 +30,10 @@ redistributed manually.
 `wget https://raw.githubusercontent.com/mezantrop/linux2free/master/linux2free.sh && sudo sh linux2free.sh`
 
 ## TODO
-[x] Allow root to ssh in remotely
-[x] Set default router
-[ ] Support more Linux distributions
-[ ] Make the code better (Oh, there are plenty things to do! See TODO remarks over the script body)
+ - [x] Allow root to ssh in remotely
+ - [x] Set default router
+ - [ ] Support more Linux distributions
+ - [ ] Make the code better (Oh, there are plenty things to do! See TODO remarks over the script body)
 
 ## History
 ```
