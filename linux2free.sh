@@ -16,8 +16,16 @@
 # ---------------------------------------------------------------------------- #
 
 # ---------------------------------------------------------------------------- # 
-# 2021.12.25  v0.1    Mikhail Zakharov  Initial version
-# 2021.12.26  v0.2    Mikhail Zakharov  SSH root login, default route, resolver
+# 2021.12.25  v0.1    Mikhail Zakharov  
+#   * Initial version
+#
+# 2021.12.26  v0.2    Mikhail Zakharov  
+#   * SSH root login, default route, resolver
+#
+# 2021.12.30  v0.3    Mikhail Zakharov  
+#   * Unbind ZFS partition from boot. Thanks https://github.com/click0 for
+#   https://github.com/mezantrop/linux2free/issues/1 
+#
 # ---------------------------------------------------------------------------- #
 
 trap "exit 1" TERM
@@ -52,14 +60,14 @@ chk_os() {
 
 install_freebsd() {
     # Create EFI filesystem
-    mkfs.fat -s 1 "/dev/$efi_disk"
-    mkdir "$freebsd_efi" && mount -t msdos "/dev/$efi_disk" "$freebsd_efi"
+    mkfs.fat -s 1 "/dev/$efi_part_name"
+    mkdir "$freebsd_efi" && mount -t msdos "/dev/$efi_part_name" "$freebsd_efi"
     mkdir -p "$freebsd_efi"/EFI/BOOT
 
     # Create ZFS
     mkdir "$freebsd_zfs"
     /sbin/modprobe zfs
-    zpool create -f -o altroot="$freebsd_zfs" zroot $boot_disk
+    zpool create -f -o altroot="$freebsd_zfs" zroot $zpool_part_name
     
     zfs set compression=on zroot
     zfs create -o mountpoint=none zroot/ROOT
@@ -182,49 +190,53 @@ chk_cmd awk "awk gawk" || die "FATAL: Unable to find awk\n"
 # 1. Make disk/partitions identification more intelligent 
 # 2. Rewrite the ugly code (mainly the awk blotches) into something more elegant
 
-# Find ONLY the very first disk device name
-disk_name=`lsblk -b -n -o KNAME,TYPE | awk '$2 ~ /disk/ {print $1; exit 0}'`
-# Partition candidates
-part_data=`lsblk -b -n -o KNAME,TYPE,SIZE,FSTYPE,MOUNTPOINT,PARTLABEL | 
-    awk '$2 ~ /part/ && $4 !~ /LVM/ {print}'`
-# EFI
-part_efi=`printf "%s\n" "$part_data" |
-    awk 'BEGIN {IGNORECASE=1}; $6 ~ /efi/||/esp/ {print}'`
-[ "$part_efi" == "" ] && die "FATAL: Only systems with EFI/ESP supported\n"
-efi_disk=`printf "%s\n" "$part_efi" | awk '{print $1}'`
-efi_partn=`printf "%s\n" "$efi_disk" | awk -v d="$disk_name" 'BEGIN {FS=d"| "} {print $2}'`
-efi_size=`printf "%s\n" "$part_efi" | awk '{print $3}'`
-[ ! $efi_size ] && efi_size=0
+# # Partition candidates
+part_data=`lsblk -b -n -o KNAME,TYPE,SIZE,FSTYPE,MOUNTPOINT,PARTLABEL | awk '$2 ~ /part/ && $4 !~ /LVM/ {print}'`
+
+# Find EFI partition
+part_efi=`printf "%s\n" "$part_data" | awk 'BEGIN {IGNORECASE=1}; $4 ~ /fat/ && $0 ~ /efi/||/esp/ {print}'`
+[ "$part_efi" == "" ] && die "FATAL: Only systems with EFI/ESP are supported\n"
+
+efi_part_name=`printf "%s\n" "$part_efi" | awk '{print $1}'`
+sys_disk_name=`printf "%s\n" ${efi_part_name%[0-9]}`
+efi_part_numb=`printf "%s\n" ${efi_part_name#$sys_disk_name}`
+efi_part_size=`printf "%s\n" "$part_efi" | awk '{print $3}'`
+
 # BOOT
 part_boot=`printf "%s\n" "$part_data" | awk '$5 == "/boot" {print}'`
-boot_disk=`printf "%s\n" "$part_boot" | awk '{print $1}'`
-boot_partn=`printf "%s\n" "$boot_disk" | awk -v d="$disk_name" 'BEGIN {FS=d"| "} {print $2}'`
-boot_size=`printf "%s\n" "$part_boot" | awk '{print $3}'`
-[ ! $boot_size ] && boot_size=0
+printf "%s\n" "$part_boot" | grep -q "$sys_disk_name" && {
+    boot_part_name=`printf "%s\n" "$part_boot" | awk '{print $1}'`
+    boot_part_numb=`printf "%s\n" ${boot_part_name#$sys_disk_name}`
+    boot_part_size=`printf "%s\n" "$part_boot" | awk '{print $3}'`
+} || { boot_part_name=''; boot_part_numb=0; boot_part_size=0; }
+
 # SWAP
 part_swap=`printf "%s\n" "$part_data" | awk '$4 == "swap" {print}'`
-swap_disk=`printf "%s\n" "$part_swap" | awk '{print $1}'`
-swap_partn=`printf "%s\n" "$swap_disk" | awk -v d="$disk_name" 'BEGIN {FS=d"| "} {print $2}'`
-swap_size=`printf "%s\n" "$part_swap" | awk '{print $3}'`
-[ ! $swap_size ] && swap_size=0
+printf "%s\n" "$part_swap" | grep -q "$sys_disk_name" && {
+    swap_part_name=`printf "%s\n" "$part_swap" | awk '{print $1}'`
+    swap_part_numb=`printf "%s\n" ${swap_part_name#$sys_disk_name}`
+    swap_part_size=`printf "%s\n" "$part_swap" | awk '{print $3}'`
+} || { swap_part_name=''; swap_part_numb=0; swap_part_size=0; }
+
 # Calculate potential free space
-target_space=`expr $efi_size + $boot_size + $swap_size`
+target_space=`expr $efi_part_size + $boot_part_size + $swap_part_size`
 [ $target_space -lt $freebsd_space ] && die "FATAL: Not enough room for ZFS\n"
 
 # If exist, umount/swapoff and delete partitions
 # TODO: use chk_cmd() to select fdisk/parted/etc 
-[ $efi_disk ] && umount "/dev/$efi_disk"
-[ $boot_disk ] && umount "/dev/$boot_disk"
-[ $part_swap ] && swapoff "/dev/$part_swap"
-for p in $efi_partn $boot_partn $swap_partn; do
-    [ $p ] && printf "d\n$p\nw\n" | fdisk "/dev/$disk_name"
+[ $efi_part_name ] && umount "/dev/$efi_part_name"
+[ $boot_part_name ] && umount "/dev/$boot_part_name"
+[ $swap_part_name ] && swapoff "/dev/$swap_part_name"
+for p in $efi_part_numb $boot_part_numb $swap_part_numb; do
+   [ $p -ne 0 ] && printf "d\n$p\nw\n" | fdisk "/dev/$sys_disk_name"
 done
 
-# Create new partitions: EFI and FreeBSD ZFS
-printf "n\n$efi_partn\n\n+10M\nt\n$efi_partn\n1\nw\n" "$efi_partn" "$efi_partn" |
-    fdisk "/dev/$disk_name"
-printf "n\n$boot_partn\n\n\nt\n$boot_partn\n36\nw\n" "$boot_partn" "$boot_partn" |
-    fdisk "/dev/$disk_name"
+# Create new partitions: EFI and ZFS pool
+printf "n\n%s\n\n+10M\nt\n%s\n1\nw\n" "$efi_part_numb" "$efi_part_numb" |
+    fdisk "/dev/$sys_disk_name"
+zpool_part_numb=`printf "n\n\n\n\nw\n" | fdisk "/dev/$sys_disk_name" | awk '/^Created a new partition/ {print $5}'`
+zpool_part_name="$sys_disk_name""$zpool_part_numb"
+printf "t\n%s\n36\nw\n" "$zpool_part_numb" | fdisk "/dev/$sys_disk_name"
 
 # Identify a Linux distribution we are running on
 chk_cmd hostnamectl hostnamectl || die "FATAL: Unable to find hostnamectl\n"

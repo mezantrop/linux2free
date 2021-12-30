@@ -44,11 +44,19 @@ wget https://raw.githubusercontent.com/mezantrop/linux2free/master/linux2free.sh
  - [x] Set default router
  - [ ] Support more Linux distributions
  - [ ] Make the code better (Oh, there are plenty things to do! See TODO remarks over the script body)
+ - [ ] Write a more serious README
 
 ## History
 ```
-2021.12.25  v0.1    Mikhail Zakharov <zmey20000@yahoo.com>  Initial version
-2021.12.26  v0.2    Mikhail Zakharov <zmey20000@yahoo.com>  SSH root login, default route, resolver
+2021.12.25  v0.1    Mikhail Zakharov  
+  * Initial version
+
+2021.12.26  v0.2    Mikhail Zakharov  
+  * SSH root login, default route, resolver
+
+2021.12.30  v0.3    Mikhail Zakharov  
+  * Unbind ZFS partition from boot. Thanks https://github.com/click0 for
+  https://github.com/mezantrop/linux2free/issues/1 
 ```
 
 Don't hesitate to enchance, report bugs or call me, 
