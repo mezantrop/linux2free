@@ -64,6 +64,10 @@ wget https://raw.githubusercontent.com/mezantrop/linux2free/master/linux2free.sh
 2022.01.02    v0.4    Mikhail Zakharov <zmey20000@yahoo.com>
   * A little less shameful partition detection, yet a lot of things to do
   * bash as potentially more "powerful" interpreter
+
+2022.01.05    v0.5    Mikhail Zakharov <zmey20000@yahoo.com>
+  * Better partition detection
+  * Better network configuration detection
 ```
 
 Don't hesitate to enchance, report bugs or call me, 

@@ -29,6 +29,10 @@
 # 2022.01.02    v0.4    Mikhail Zakharov <zmey20000@yahoo.com>
 #   * A little less shameful partition detection, yet a lot of things to do
 #   * bash as potentially more "powerful" interpreter
+#
+# 2022.01.05    v0.5    Mikhail Zakharov <zmey20000@yahoo.com>
+#   * Better partition detection
+#   * Better network configuration detection
 # ---------------------------------------------------------------------------- #
 
 trap "exit 1" TERM
@@ -63,14 +67,14 @@ chk_os() {
 
 install_freebsd() {
     # Create EFI filesystem
-    mkfs.fat -s 1 "/dev/$efi_part_name"
-    mkdir "$freebsd_efi" && mount -t msdos "/dev/$efi_part_name" "$freebsd_efi"
+    mkfs.fat -s 1 "/dev/$efi_p_nme"
+    mkdir "$freebsd_efi" && mount -t msdos "/dev/$efi_p_nme" "$freebsd_efi"
     mkdir -p "$freebsd_efi"/EFI/BOOT
 
     # Create ZFS
     mkdir "$freebsd_zfs"
     /sbin/modprobe zfs
-    zpool create -f -o altroot="$freebsd_zfs" zroot $zpool_part_name
+    zpool create -f -o altroot="$freebsd_zfs" zroot $zpool_p_nme
     
     zfs set compression=on zroot
     zfs create -o mountpoint=none zroot/ROOT
@@ -165,20 +169,26 @@ do_redhat() {
     dnf install -y zfs
 
     # Snip network parameters
-    # TODO: utilize chk_cmd() to select either ip or ifconfig in the future 
     iface_name=`ip route show default | awk '/default/ {print $5}'`
     deftrouter=`ip route show default | awk '/default/ {print $3}'`
-    iface_ipv4=`ifconfig $iface_name | awk '$1 == "inet" {print $2}'`
-    iface_ipv6=`ifconfig $iface_name | awk '$1 == "inet6" {print $2; exit 0}'`
-    iface_mac=`cat /sys/class/net/"$iface_name"/address`
+    iface_ipv4=`ip -4 address show "$iface_name" | awk '$1 == "inet" {print $2}'`
+    iface_ipv6=`ip -6 address show "$iface_name" | awk '$1 == "inet6" {print $2; exit 0}'`
+    iface_mac=`ip link show "$iface_name" | awk '/ether/ {print $2}'`
+# TODO: utilize chk_cmd() to switch between ip/netstat/ifconfig
+#    iface_name=`netstat -nr | awk '$1 == "0.0.0.0" || $1 == "Default" {print $8}'`
+#    iface_ipv4=`ifconfig $iface_name | awk '$1 == "inet" {print $2}'`
+#    iface_ipv6=`ifconfig $iface_name | awk '$1 == "inet6" {print $2; exit 0}'`
+#    iface_mac=`cat /sys/class/net/"$iface_name"/address`
+#    iface_mac=`ifconfig enp0s3 |awk '$1 == "ether" {print $2}'`
 
     install_freebsd  
 }
 
-
 # ---------------------------------------------------------------------------- #
 verbose=1
-freebsd_space=536870912                 # 512MB
+freebsd_total_space=512         # 512M for kernel + base
+freebsd_efi_space=10            # 10M for EFI loader
+
 freebsd_release="13.0-RELEASE"
 freebsd_efi="/freebsd.efi"
 freebsd_zfs="/freebsd.zfs"
@@ -187,68 +197,70 @@ freebsd_zfs="/freebsd.zfs"
 
 chk_cmd awk "awk gawk" || die "FATAL: Unable to find awk\n"
 
-# Find a suitable partition on the first disk.
+# Find a first drive with EFI partition to work on
 # BEWARE: There are a lot of silly assumptions. Proceed with caution!
-# TODO: Make disk/partitions identification more intelligent 
+# TODO: Make disk/partitions identification more intelligent (again)
 while read KNAME TYPE SIZE FSTYPE MOUNTPOINT PARTLABEL; do
-    # EFI Partition
-    grep -q -i "EFI" <<< "$PARTLABEL" && {
-        efi_part_name="$KNAME"
-        efi_part_size="$SIZE"
-        efi_disk_name=${efi_part_name%[0-9]}
-        sys_disk_name=$efi_disk_name
-        efi_part_numb=${efi_part_name#$sys_disk_name}
+    grep -q -i "EFI" <<< "$PARTLABEL" && {                  # EFI Partition
+        efi_p_nme="$KNAME"                                  # Part name
+        efi_p_siz="$SIZE"                                   # Part size
+        efi_d_nme="${efi_p_nme%[0-9]}"                      # disk name
+        sys_d_nme="$efi_d_nme"                              # part number
+        efi_p_num="${efi_p_nme#$sys_d_nme}"
         continue
     }
-    # BOOT
-    [ "$MOUNTPOINT" == '/boot' ] && {
-        boot_part_name="$KNAME"
-        boot_part_size="$SIZE"
-        boot_disk_name=${boot_part_name%[0-9]}
-        boot_part_numb=${boot_part_name#$boot_disk_name}
+    [ "$MOUNTPOINT" == '/boot' ] && {                       # BOOT
+        boot_p_nme="$KNAME"
+        boot_p_siz="$SIZE"
+        boot_d_nme="${boot_p_nme%[0-9]}"
+        [ "$boot_d_nme" != "$sys_d_nme" ] && 
+            die "FATAL: Boot: %s is not on the same drive with EFI: %s\n" \
+                "$boot_d_nme" "$sys_d_nme"
+        boot_p_num="${boot_p_nme#$boot_d_nme}"
         continue
     }
-    # SWAP
-    [ "$FSTYPE" == 'swap' ] && {
-        swap_part_name="$KNAME"
-        swap_part_size="$SIZE"
-        swap_disk_name=${swap_part_name%[0-9]}
-        swap_part_numb=${swap_part_name#$swap_disk_name}
+    [ "$FSTYPE" == 'swap' ] && {                            # SWAP
+        swap_p_nme="$KNAME"
+        swap_p_siz="$SIZE"
+        swap_d_nme="${swap_p_nme%[0-9]}"
+        [ "$swap_d_nme" != "$sys_d_nme" ] && 
+            die "FATAL: Swap: %s is not on the EFI drive: %s\n" \
+                "$swap_d_nme" "$sys_d_nme"
+        swap_p_num="${swap_p_nme#$swap_d_nme}"
         continue
     }
 done < <(lsblk -b -n -o KNAME,TYPE,SIZE,FSTYPE,MOUNTPOINT,PARTLABEL | 
-    awk '$2 ~ /part/ && $4 !~ /LVM/ {print}')
+    awk '$2 ~ /part/ && $4 !~ /LVM/')
 
-[ $efi_part_name ] || die "FATAL: Only systems with EFI/ESP are supported\n"
+[ $efi_p_nme ] || die "FATAL: Only systems with EFI/ESP are supported\n"
 
-printl "UEFI part_name: %s part_size: %s disk_name: %s part_numb: %s\n" \
-    "$efi_part_name" "$efi_part_size" "$efi_disk_name" "$efi_part_numb"
-printl "BOOT part_name: %s part_size: %s disk_name: %s part_numb: %s\n" \
-    "$boot_part_name" "$boot_part_size" "$boot_disk_name" "$boot_part_numb"
-printl "SWAP part_name: %s part_size: %s disk_name: %s part_numb: %s\n" \
-    "$swap_part_name" "$swap_part_size" "$swap_disk_name" "$swap_part_numb"
+printl "UEFI partition name: [%s], size: [%s], disk: [%s], number: [%s]\n" \
+    "$efi_p_nme" "$efi_p_siz" "$efi_d_nme" "$efi_p_num"
+printl "BOOT partition name: [%s], size: [%s], disk: [%s], number: [%s]\n" \
+    "$boot_p_nme" "$boot_p_siz" "$boot_d_nme" "$boot_p_num"
+printl "SWAP partition name: [%s], size: [%s], disk: [%s], number: [%s]\n" \
+    "$swap_p_nme" "$swap_p_siz" "$swap_d_nme" "$swap_p_num"
 
 # Calculate potential free space
-target_space=`expr $efi_part_size + ${boot_part_size=0} + ${swap_part_size=0}`
-[ $target_space -lt $freebsd_space ] && die "FATAL: Not enough room for ZFS\n"
+dest_space=`expr '(' $efi_p_siz + ${boot_p_siz=0} + ${swap_p_siz=0} ')' '/' 1048576`
+[ $dest_space -lt $freebsd_total_space ] && die "FATAL: Not enough disk space\n"
 
 # If exist, umount/swapoff and delete partitions
 # TODO: use chk_cmd() to select fdisk/parted/etc 
-[ $efi_part_name ] && umount "/dev/$efi_part_name"
-[ $boot_part_name ] && umount "/dev/$boot_part_name"
-[ $swap_part_name ] && swapoff "/dev/$swap_part_name"
-for p in $efi_part_numb $boot_part_numb $swap_part_numb; do
-   [ $p ] && printf "d\n$p\nw\n" | fdisk "/dev/$sys_disk_name"
+[ $efi_p_nme ] && umount "/dev/$efi_p_nme"
+[ $boot_p_nme ] && umount "/dev/$boot_p_nme"
+[ $swap_p_nme ] && swapoff "/dev/$swap_p_nme"
+for p in $efi_p_num $boot_p_num $swap_p_num; do
+   [ $p ] && printf "d\n$p\nw\n" | fdisk "/dev/$sys_d_nme"
 done
 
 # Create new partitions: EFI and ZFS pool
-printf "n\n%s\n\n+10M\nt\n%s\n1\nw\n" "$efi_part_numb" "$efi_part_numb" |
-    fdisk "/dev/$sys_disk_name"
-zpool_part_numb=`printf "n\n\n\n\nw\n" | 
-    fdisk "/dev/$sys_disk_name" | 
+printf "n\n%s\n\n+%sM\nt\n%s\n1\nw\n" "$efi_p_num" "$freebsd_efi_space" "$efi_p_num" |
+    fdisk "/dev/$sys_d_nme"
+zpool_p_num=`printf "n\n\n\n\nw\n" | fdisk "/dev/$sys_d_nme" | 
     awk '/^Created a new partition/ {print $5}'`
-zpool_part_name="$sys_disk_name""$zpool_part_numb"
-printf "t\n%s\n36\nw\n" "$zpool_part_numb" | fdisk "/dev/$sys_disk_name"
+zpool_p_nme="$sys_d_nme""$zpool_p_num"
+printf "t\n%s\n36\nw\n" "$zpool_p_num" | fdisk "/dev/$sys_d_nme"
 
 # Identify a Linux distribution we are running on
 chk_cmd hostnamectl hostnamectl || die "FATAL: Unable to find hostnamectl\n"
@@ -260,7 +272,8 @@ printl "release_family=%s\n" "$release_family"
 
 # Install the stuff
 case "$release_family" in
-    debian) do_debian ;;
+    debian) 
+        do_debian ;;
     redhat)
         chk_cmd dnf "dnf yum" || die "FATAL: Unable to find DNF packet manager\n"
         do_redhat ;;
