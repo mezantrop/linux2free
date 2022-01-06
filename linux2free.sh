@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ---------------------------------------------------------------------------- #
-# linux2free - Linux to FreeBSD upgrade script                                 #
+# linux2free.sh - Linux to FreeBSD upgrade script                                 #
 # ---------------------------------------------------------------------------- #
 
 # ---------------------------------------------------------------------------- #
@@ -15,25 +15,8 @@
 # this stuff is worth it, you can buy me a beer in return.    Mikhail Zakharov #
 # ---------------------------------------------------------------------------- #
 
-# ---------------------------------------------------------------------------- # 
-# 2021.12.25    v0.1    Mikhail Zakharov <zmey20000@yahoo.com>
-#   * Initial version
-#
-# 2021.12.26    v0.2    Mikhail Zakharov <zmey20000@yahoo.com>
-#   * SSH root login, default route, resolver
-#
-# 2021.12.30    v0.3    Mikhail Zakharov <zmey20000@yahoo.com>
-#   * Unbind ZFS partition from boot. Thanks https://github.com/click0 for
-#   https://github.com/mezantrop/linux2free/issues/1 
-#
-# 2022.01.02    v0.4    Mikhail Zakharov <zmey20000@yahoo.com>
-#   * A little less shameful partition detection, yet a lot of things to do
-#   * bash as potentially more "powerful" interpreter
-#
-# 2022.01.05    v0.5    Mikhail Zakharov <zmey20000@yahoo.com>
-#   * Better partition detection
-#   * Better network configuration detection
 # ---------------------------------------------------------------------------- #
+script_name="linux2free.sh"; script_version="0.6"
 
 trap "exit 1" TERM
 export L2FPID=$$
@@ -41,6 +24,17 @@ export L2FPID=$$
 # -- Useful functions -------------------------------------------------------- #
 die() { printf "$@"; kill -s TERM $L2FPID; }
 printl() { [ $verbose -eq 1 ] && printf "$@"; }
+
+usage() {
+    printf "Usage:\n\t%s [-d /dev/drive] [-R XX.Y] [-hv]\n\n" "$script_name"
+    printf "Where:\n"
+    printf "\t-d\tDevice filename, e.g: /dev/sda\n"
+    printf "\t-R\tFreeBSD release, e.g: 13.0. Be careful with old releases\n" 
+    printf "\t\twhich may not boot because of ZFS and/or EFI compatibility!\n"
+    printf "\t-h\tPrint this message\n"
+    printf "\t-v\tShow the script version\n\n"
+    [ $1 ] && exit $1 || exit 0
+}
 
 chk_cmd() {
     for c in `printf "%s\n" "$*" | cut -d " " -f 2-100`; do
@@ -74,8 +68,10 @@ install_freebsd() {
     # Create ZFS
     mkdir "$freebsd_zfs"
     /sbin/modprobe zfs
-    zpool create -f -o altroot="$freebsd_zfs" zroot $zpool_p_nme
-    
+
+    mkpool="zpool create -f -o altroot=$freebsd_zfs $zfs_options zroot $zpool_p_nme"
+    $mkpool
+
     zfs set compression=on zroot
     zfs create -o mountpoint=none zroot/ROOT
     zfs create -o mountpoint=/ -o canmount=noauto zroot/ROOT/default
@@ -104,8 +100,8 @@ install_freebsd() {
     zpool set bootfs=zroot/ROOT/default zroot
     # Download/unpack FreeBSD base and kernel sets 
     cd "$freebsd_zfs"
-    wget -O - https://download.freebsd.org/ftp/releases/amd64/"$freebsd_release"/base.txz | tar Jxvf -
-    wget -O - https://download.freebsd.org/ftp/releases/amd64/"$freebsd_release"/kernel.txz | tar Jxvf -
+    wget -O - "$freebsd_downloads/$freebsd_release-RELEASE/base.txz" | tar Jxvf -
+    wget -O - "$freebsd_downloads/$freebsd_release-RELEASE/kernel.txz" | tar Jxvf -
 
     # Install boot EFI loader and configure basic startup scripts
     cp "$freebsd_zfs"/boot/loader.efi "$freebsd_efi"/EFI/BOOT/BOOTX64.efi
@@ -153,7 +149,6 @@ EOF
 do_debian() {
     # TODO: Implement someday
     die "Debian linux family is not supported yet"
-:
 }
 
 do_redhat() {
@@ -161,7 +156,7 @@ do_redhat() {
 
     # Install ZFS packages
     for m in `seq 10 -1 1`; do
-        dnf -y install https://zfsonlinux.org/epel/zfs-release$(rpm -E %dist)_$m.noarch.rpm && break
+        dnf -y install $zfsonlinux_download$(rpm -E %dist)_$m.noarch.rpm && break
     done
     rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-zfsonlinux
     dnf install -y epel-release
@@ -189,9 +184,35 @@ verbose=1
 freebsd_total_space=512         # 512M for kernel + base
 freebsd_efi_space=10            # 10M for EFI loader
 
-freebsd_release="13.0-RELEASE"
+freebsd_downloads="https://download.freebsd.org/ftp/releases/amd64"
+
+freebsd_release="13.0"          # Set this to the current release version!
 freebsd_efi="/freebsd.efi"
 freebsd_zfs="/freebsd.zfs"
+
+zfsonlinux_download="https://zfsonlinux.org/epel/zfs-release"
+
+zfs_options=""                  # Additional ZFS options
+
+[  "$#" -gt 4 ] && usage 1
+while getopts "d:R:hv" opt; do
+    case "$opt" in
+        d)
+            sys_d_nme=`basename "$OPTARG"`
+            [ "`lsblk -l /dev/$sys_d_nme`" ] || 
+                die "FATAL: Unable to install FreeBSD on: /dev/$sys_d_nme\n"
+            ;;
+        R)
+            [ "$OPTARG" != "$freebsd_release" ] && zfs_options=' -o version=28 '
+            freebsd_release="$OPTARG" ;;
+        v) 
+            printf "%s v.%s\n" "$script_name" "$script_version"; exit 0 ;;
+        h)
+            usage 0 ;;
+        *)
+            usage 1 ;;
+    esac
+done
 
 [ `id -u` -ne 0 ] && die "FATAL: You must run the script as root\n"
 
@@ -204,8 +225,8 @@ while read KNAME TYPE SIZE FSTYPE MOUNTPOINT PARTLABEL; do
     grep -q -i "EFI" <<< "$PARTLABEL" && {                  # EFI Partition
         efi_p_nme="$KNAME"                                  # Part name
         efi_p_siz="$SIZE"                                   # Part size
-        efi_d_nme="${efi_p_nme%[0-9]}"                      # disk name
-        sys_d_nme="$efi_d_nme"                              # part number
+        efi_d_nme="${efi_p_nme%[0-9]}"                      # Disk name
+        [ "$sys_d_nme" ] || sys_d_nme="$efi_d_nme"          # "Boot" disk name
         efi_p_num="${efi_p_nme#$sys_d_nme}"
         continue
     }
@@ -229,7 +250,9 @@ while read KNAME TYPE SIZE FSTYPE MOUNTPOINT PARTLABEL; do
         swap_p_num="${swap_p_nme#$swap_d_nme}"
         continue
     }
-done < <(lsblk -b -n -o KNAME,TYPE,SIZE,FSTYPE,MOUNTPOINT,PARTLABEL | 
+done < <(( [ "$sys_d_nme" ] &&
+    lsblk -b -n -o KNAME,TYPE,SIZE,FSTYPE,MOUNTPOINT,PARTLABEL /dev/"$sys_d_nme" ||
+    lsblk -b -n -o KNAME,TYPE,SIZE,FSTYPE,MOUNTPOINT,PARTLABEL) | 
     awk '$2 ~ /part/ && $4 !~ /LVM/')
 
 [ $efi_p_nme ] || die "FATAL: Only systems with EFI/ESP are supported\n"
@@ -280,6 +303,10 @@ case "$release_family" in
 esac
 
 printf "\nPress ENTER to reboot into FreeBSD or hit ^C if you forgot something!\n"
-printf "Think twice, this might be your last chance to do it!\n"
+printf "Think twice, this might be your last chance to do it!\n\n"
+
+grep -q -i "version=28" <<< "$zfs_options" && 
+    printf "Note, zpool is created with basic options for compatibility.\n"\
+"Don\'t forget to run: zpool upgrade -a\n"
 read
 reboot

@@ -1,0 +1,21 @@
+2021.12.25    v0.1    Mikhail Zakharov <zmey20000@yahoo.com>
+  * Initial version
+
+2021.12.26    v0.2    Mikhail Zakharov <zmey20000@yahoo.com>
+  * SSH root login, default route, resolver
+
+2021.12.30    v0.3    Mikhail Zakharov <zmey20000@yahoo.com>
+  * Unbind ZFS partition from boot. Thanks https://github.com/click0 for
+  https://github.com/mezantrop/linux2free/issues/1 
+
+2022.01.02    v0.4    Mikhail Zakharov <zmey20000@yahoo.com>
+  * A little less shameful partition detection, yet a lot of things to do
+  * bash as potentially more "powerful" interpreter
+
+2022.01.05    v0.5    Mikhail Zakharov <zmey20000@yahoo.com>
+  * Better partition and network configuration detection
+
+2022.01.06    v0.6    Mikhail Zakharov <zmey20000@yahoo.com>
+  * Simple command-line options to select a destination drive and FreeBSD release
+  * zpool compatibility option for older releases
+  * Minor cosmetic changes; CHANGELOG in a separate file

@@ -48,27 +48,5 @@ wget https://raw.githubusercontent.com/mezantrop/linux2free/master/linux2free.sh
  - [ ] Import SSH keys as suggested by [PkHolm](https://www.reddit.com/r/freebsd/comments/rpks7e/comment/hq545yh/?utm_source=reddit&utm_medium=web2x&context=3)
  - [ ] Migrate some data from Linux filesystems as [tux2bsd](https://www.reddit.com/user/tux2bsd) suggested
 
-
-## History
-```
-2021.12.25    v0.1    Mikhail Zakharov <zmey20000@yahoo.com>
-  * Initial version
-
-2021.12.26    v0.2    Mikhail Zakharov <zmey20000@yahoo.com>
-  * SSH root login, default route, resolver
-
-2021.12.30    v0.3    Mikhail Zakharov <zmey20000@yahoo.com>
-  * Unbind ZFS partition from boot. Thanks https://github.com/click0 for
-  https://github.com/mezantrop/linux2free/issues/1
-
-2022.01.02    v0.4    Mikhail Zakharov <zmey20000@yahoo.com>
-  * A little less shameful partition detection, yet a lot of things to do
-  * bash as potentially more "powerful" interpreter
-
-2022.01.05    v0.5    Mikhail Zakharov <zmey20000@yahoo.com>
-  * Better partition detection
-  * Better network configuration detection
-```
-
 Don't hesitate to enchance, report bugs or call me, 
 Mikhail Zakharov <zmey20000@yahoo.com>
