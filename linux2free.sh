@@ -15,9 +15,27 @@
 # this stuff is worth it, you can buy me a beer in return.    Mikhail Zakharov #
 # ---------------------------------------------------------------------------- #
 
-# ---------------------------------------------------------------------------- #
-script_name="linux2free.sh"; script_version="0.6"
+# -- User configurable variables --------------------------------------------- #
+verbose=1                                       # Be verbose or not
 
+freebsd_total_space=512                         # 512M for kernel + base
+freebsd_efi_space=10                            # 10M for EFI loader
+
+# Download locations for Linux ZFS packages and FreeBSD distributions
+zfsonlinux_download="https://zfsonlinux.org/epel/zfs-release"
+freebsd_download="https://download.freebsd.org/ftp/releases"
+freebsd_release="13.0"                          # Desired FreeBSD release
+
+zpool_options=""                                # Additional ZFS options
+
+# -- System defaults --------------------------------------------------------- #
+script_name="linux2free.sh"
+script_version="0.6"
+
+freebsd_efi="/freebsd.efi"                      # Temporary mountpoints on Linux
+freebsd_zfs="/freebsd.zfs"                      # for FreeBSD EFI and ZFS
+
+# ---------------------------------------------------------------------------- #
 trap "exit 1" TERM
 export L2FPID=$$
 
@@ -26,11 +44,14 @@ die() { printf "$@"; kill -s TERM $L2FPID; }
 printl() { [ $verbose -eq 1 ] && printf "$@"; }
 
 usage() {
-    printf "Usage:\n\t%s [-d /dev/drive] [-R XX.Y] [-hv]\n\n" "$script_name"
+    printf "Usage:\n\t%s [-d /dev/drive] [-R XX.Y] [-A arch] [-hv]\n\n" "$script_name"
     printf "Where:\n"
-    printf "\t-d\tDevice filename, e.g: /dev/sda\n"
+    printf "\t-d\tDevice filename, e.g: /dev/sda or sda\n"
     printf "\t-R\tFreeBSD release, e.g: 13.0. Be careful with old releases\n" 
     printf "\t\twhich may not boot because of ZFS and/or EFI compatibility!\n"
+    printf "\t-A\tExperimental. Force one of the architectures: amd64|arm|arm64\n"
+    printf "\t\tto override autodetection. Note: i386(i686) is not currently\n"
+    printf "\t\tsupported by EFI as well as booting arm* systems is not tested\n"
     printf "\t-h\tPrint this message\n"
     printf "\t-v\tShow the script version\n\n"
     [ $1 ] && exit $1 || exit 0
@@ -48,14 +69,30 @@ chk_cmd() {
 
 chk_os() {
     # Return release family by $2
-    [ "$1" -a "$2" ] || die "FATAL: Wrong chk_os() usage\n"
+    [ "$1" -a "$2" ] || die "FATAL: Wrong chk_os() usage!\n"
     case "$2" in
         *[cC][eE][nN][tT][oO][sS]*)     eval $1='redhat'   ;;
         *[fF][eE][dD][oO][rR][aA]*)     eval $1="redhat"   ;;
         *[rR][eE][dD]*[hH][aA][tT]*)    eval $1="redhat"   ;;
         *[dD][eE][bB][iI][aA][nN]*)     eval $1="debian"   ;;
         *[uU][bB][uU][nN][tT][uU]*)     eval $1="debian"   ;;
-        *)  die "FATAL: Unsupported release name: %s\n" "$2" ;;
+        *) die "FATAL: Unsupported release name: %s\n" "$2" ;;
+    esac
+}
+
+chk_arch() {
+    # Detect machine architecture or take it from "$2" and convert it to 
+    # FreeBSD naming format as "$1". Note, it also sets efi_filename variable
+    [ "$1" ] || die "FATAL: Wrong chk_arch() usage!\n"
+    [ "$2" ] && arhc_="$2" ||
+    arhc_=`$hostnamectl | $awk -F ': ' '/Architecture/ {print $2}'`
+    case "$arhc_" in
+        # ... and 
+        amd64|x86-64)   eval $1="amd64";    efi_filename="BOOTX64.efi" ;;
+        arm)            eval $1="arm" ;     efi_filename="BOOTARM.efi" ;;
+        arm64)          eval $1="arm64";    efi_filename="BOOTAA64.efi" ;;
+        i386|i686|*)    # Yes, 32-bit x86 is not supported!
+            die "FATAL: Unsupported architecture: %s\n" "$arhc_" ;;
     esac
 }
 
@@ -69,7 +106,7 @@ install_freebsd() {
     mkdir "$freebsd_zfs"
     /sbin/modprobe zfs
 
-    mkpool="zpool create -f -o altroot=$freebsd_zfs $zfs_options zroot $zpool_p_nme"
+    mkpool="zpool create -f -o altroot=$freebsd_zfs $zpool_options zroot $zpool_p_nme"
     $mkpool
 
     zfs set compression=on zroot
@@ -99,12 +136,15 @@ install_freebsd() {
 
     zpool set bootfs=zroot/ROOT/default zroot
     # Download/unpack FreeBSD base and kernel sets 
+    # TODO: Perform chk_cmd() and detect wget|curl...
     cd "$freebsd_zfs"
-    wget -O - "$freebsd_downloads/$freebsd_release-RELEASE/base.txz" | tar Jxvf -
-    wget -O - "$freebsd_downloads/$freebsd_release-RELEASE/kernel.txz" | tar Jxvf -
+    wget -O - "$freebsd_download/$arch_name/$freebsd_release-RELEASE/base.txz" | 
+        tar Jxvf -
+    wget -O - "$freebsd_download/$arch_name/$freebsd_release-RELEASE/kernel.txz" |
+        tar Jxvf -
 
     # Install boot EFI loader and configure basic startup scripts
-    cp "$freebsd_zfs"/boot/loader.efi "$freebsd_efi"/EFI/BOOT/BOOTX64.efi
+    cp "$freebsd_zfs"/boot/loader.efi "$freebsd_efi"/EFI/BOOT/"$efi_filename"
 
     echo zfs_load="YES" >> "$freebsd_zfs"/boot/loader.conf
 
@@ -121,7 +161,7 @@ install_freebsd() {
     echo PasswordAuthentication yes >> "$freebsd_zfs"/etc/ssh/sshd_config
     cp /etc/resolv.conf "$freebsd_zfs"/etc
     
-    efibootmgr -c -l '\EFI\BOOT\bootx64.efi' -L FreeBSD
+    efibootmgr -c -l '\EFI\BOOT\'"$efi_filename" -L FreeBSD
 
     # Configure network interfaces
     # TODO: Add default routing, I forgot about, he-he-he, ouch :( 
@@ -179,23 +219,11 @@ do_redhat() {
     install_freebsd  
 }
 
-# ---------------------------------------------------------------------------- #
-verbose=1
-freebsd_total_space=512         # 512M for kernel + base
-freebsd_efi_space=10            # 10M for EFI loader
-
-freebsd_downloads="https://download.freebsd.org/ftp/releases/amd64"
-
-freebsd_release="13.0"          # Set this to the current release version!
-freebsd_efi="/freebsd.efi"
-freebsd_zfs="/freebsd.zfs"
-
-zfsonlinux_download="https://zfsonlinux.org/epel/zfs-release"
-
-zfs_options=""                  # Additional ZFS options
+# -- Main code --------------------------------------------------------------- #
+chk_cmd awk "awk gawk" || die "FATAL: Unable to find awk\n"
 
 [  "$#" -gt 4 ] && usage 1
-while getopts "d:R:hv" opt; do
+while getopts "d:R:A:hv" opt; do
     case "$opt" in
         d)
             sys_d_nme=`basename "$OPTARG"`
@@ -203,8 +231,12 @@ while getopts "d:R:hv" opt; do
                 die "FATAL: Unable to install FreeBSD on: /dev/$sys_d_nme\n"
             ;;
         R)
-            [ "$OPTARG" != "$freebsd_release" ] && zfs_options=' -o version=28 '
+            [ "$OPTARG" != "$freebsd_release" ] && 
+                # Set zpool compat option
+                zpool_options="$zpool_options -o version=28 "
             freebsd_release="$OPTARG" ;;
+        A)
+            chk_arch arch_name "$OPTARG" ;;
         v) 
             printf "%s v.%s\n" "$script_name" "$script_version"; exit 0 ;;
         h)
@@ -215,8 +247,6 @@ while getopts "d:R:hv" opt; do
 done
 
 [ `id -u` -ne 0 ] && die "FATAL: You must run the script as root\n"
-
-chk_cmd awk "awk gawk" || die "FATAL: Unable to find awk\n"
 
 # Find a first drive with EFI partition to work on
 # BEWARE: There are a lot of silly assumptions. Proceed with caution!
@@ -290,6 +320,9 @@ chk_cmd hostnamectl hostnamectl || die "FATAL: Unable to find hostnamectl\n"
 [ ! $release_name ] && 
     release_name=`$hostnamectl | $awk -F ': ' '/Operating System/ {print $2}'`
 printl "release_name=%s\n" "$release_name"
+[ ! $arch_name ] && chk_arch arch_name
+printl "arch_name=%s\n" "$arch_name"
+
 [ ! $release_family ] && chk_os release_family "$release_name"
 printl "release_family=%s\n" "$release_family"
 
@@ -305,7 +338,7 @@ esac
 printf "\nPress ENTER to reboot into FreeBSD or hit ^C if you forgot something!\n"
 printf "Think twice, this might be your last chance to do it!\n\n"
 
-grep -q -i "version=28" <<< "$zfs_options" && 
+grep -q -i "version=28" <<< "$zpool_options" && 
     printf "Note, zpool is created with basic options for compatibility.\n"\
 "Don\'t forget to run: zpool upgrade -a\n"
 read
