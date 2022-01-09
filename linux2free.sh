@@ -17,6 +17,7 @@
 
 # -- User configurable variables --------------------------------------------- #
 verbose=1                                       # Be verbose or not
+interactive=1                                   # Ask for confirmation or not
 
 freebsd_total_space=512                         # 512M for kernel + base
 freebsd_efi_space=10                            # 10M for EFI loader
@@ -30,7 +31,7 @@ zpool_options=""                                # Additional ZFS options
 
 # -- System defaults --------------------------------------------------------- #
 script_name="linux2free.sh"
-script_version="0.6"
+script_version="0.8"
 
 freebsd_efi="/freebsd.efi"                      # Temporary mountpoints on Linux
 freebsd_zfs="/freebsd.zfs"                      # for FreeBSD EFI and ZFS
@@ -44,7 +45,7 @@ die() { printf "$@"; kill -s TERM $L2FPID; }
 printl() { [ $verbose -eq 1 ] && printf "$@"; }
 
 usage() {
-    printf "Usage:\n\t%s [-d /dev/drive] [-R XX.Y] [-A arch] [-hv]\n\n" "$script_name"
+    printf "Usage:\n\t%s [-d /dev/drive] [-R XX.Y] [-A arch] [-i] [-hv]\n\n" "$script_name"
     printf "Where:\n"
     printf "\t-d\tDevice filename, e.g: /dev/sda or sda\n"
     printf "\t-R\tFreeBSD release, e.g: 13.0. Be careful with old releases\n" 
@@ -52,6 +53,7 @@ usage() {
     printf "\t-A\tExperimental. Force one of the architectures: amd64|arm|arm64\n"
     printf "\t\tto override autodetection. Note: i386(i686) is not currently\n"
     printf "\t\tsupported by EFI as well as booting arm* systems is not tested\n"
+    printf "\t-i\tTurn interactive mode off - do not ask questions\n"
     printf "\t-h\tPrint this message\n"
     printf "\t-v\tShow the script version\n\n"
     [ $1 ] && exit $1 || exit 0
@@ -98,14 +100,14 @@ chk_arch() {
 
 install_freebsd() {
     # Create EFI filesystem
-    mkfs.fat -s 1 "/dev/$efi_p_nme"
-    mkdir "$freebsd_efi" && mount -t msdos "/dev/$efi_p_nme" "$freebsd_efi"
+    mkfs.fat -s 1 "/dev/$efi_p_nme" || 
+        die "FATAL: Unable to create EFI FAT filesystem"
+    mkdir "$freebsd_efi" && mount -t msdos "/dev/$efi_p_nme" "$freebsd_efi" ||
+        die "FATAL: Unable to mount EFI FAT filesystem"
     mkdir -p "$freebsd_efi"/EFI/BOOT
 
     # Create ZFS
     mkdir "$freebsd_zfs"
-    /sbin/modprobe zfs
-
     mkpool="zpool create -f -o altroot=$freebsd_zfs $zpool_options zroot $zpool_p_nme"
     $mkpool
 
@@ -186,12 +188,31 @@ EOF
     touch "$freebsd_zfs"/etc/fstab
 }
 
-do_debian() {
-    # TODO: Implement someday
-    die "Debian linux family is not supported yet"
+pkg_zfs_debian() {
+    # Install ZFS on Debian
+    cat << EOF > /etc/apt/sources.list.d/buster-backports.list
+deb http://deb.debian.org/debian buster-backports main contrib
+deb-src http://deb.debian.org/debian buster-backports main contrib
+EOF
+
+    cat << EOF > /etc/apt/preferences.d/90_zfs
+Package: libnvpair1linux libnvpair3linux libuutil1linux libuutil3linux libzfs2linux libzfs4linux libzpool2linux libzpool4linux spl-dkms zfs-dkms zfs-test zfsutils-linux zfsutils-linux-dev zfs-zed
+Pin: release n=buster-backports
+Pin-Priority: 990
+EOF
+
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get dist-upgrade
+    apt-get -y install dpkg-dev linux-headers-$(uname -r) linux-image-amd64
+    apt-get -y install zfs-dkms zfsutils-linux
+
+    # Make sure there is mkfs.fat istalled
+    apt-get install dosfstools
 }
 
-do_redhat() {
+pkg_zfs_redhat() {
+    # Install ZFS on Redhat
     dnf upgrade -y  # We must be sure to have Kernel and ZFS modules in sync!
 
     # Install ZFS packages
@@ -202,28 +223,13 @@ do_redhat() {
     dnf install -y epel-release
     dnf install -y kernel-devel
     dnf install -y zfs
-
-    # Snip network parameters
-    iface_name=`ip route show default | awk '/default/ {print $5}'`
-    deftrouter=`ip route show default | awk '/default/ {print $3}'`
-    iface_ipv4=`ip -4 address show "$iface_name" | awk '$1 == "inet" {print $2}'`
-    iface_ipv6=`ip -6 address show "$iface_name" | awk '$1 == "inet6" {print $2; exit 0}'`
-    iface_mac=`ip link show "$iface_name" | awk '/ether/ {print $2}'`
-# TODO: utilize chk_cmd() to switch between ip/netstat/ifconfig
-#    iface_name=`netstat -nr | awk '$1 == "0.0.0.0" || $1 == "Default" {print $8}'`
-#    iface_ipv4=`ifconfig $iface_name | awk '$1 == "inet" {print $2}'`
-#    iface_ipv6=`ifconfig $iface_name | awk '$1 == "inet6" {print $2; exit 0}'`
-#    iface_mac=`cat /sys/class/net/"$iface_name"/address`
-#    iface_mac=`ifconfig enp0s3 |awk '$1 == "ether" {print $2}'`
-
-    install_freebsd  
 }
 
 # -- Main code --------------------------------------------------------------- #
 chk_cmd awk "awk gawk" || die "FATAL: Unable to find awk\n"
 
 [  "$#" -gt 4 ] && usage 1
-while getopts "d:R:A:hv" opt; do
+while getopts "d:R:A:ihv" opt; do
     case "$opt" in
         d)
             sys_d_nme=`basename "$OPTARG"`
@@ -237,6 +243,8 @@ while getopts "d:R:A:hv" opt; do
             freebsd_release="$OPTARG" ;;
         A)
             chk_arch arch_name "$OPTARG" ;;
+        i)
+            interactive=0 ;;                # Disable "interactive" mode
         v) 
             printf "%s v.%s\n" "$script_name" "$script_version"; exit 0 ;;
         h)
@@ -252,15 +260,17 @@ done
 # BEWARE: There are a lot of silly assumptions. Proceed with caution!
 # TODO: Make disk/partitions identification more intelligent (again)
 while read KNAME TYPE SIZE FSTYPE MOUNTPOINT PARTLABEL; do
-    grep -q -i "EFI" <<< "$PARTLABEL" && {                  # EFI Partition
+    grep -q -i "EFI" <<< "$PARTLABEL" || grep -q -i "EFI" <<< "$MOUNTPOINT" && 
+    grep -q -i "fat" <<< "$FSTYPE" && {                     # EFI partition
         efi_p_nme="$KNAME"                                  # Part name
         efi_p_siz="$SIZE"                                   # Part size
         efi_d_nme="${efi_p_nme%[0-9]}"                      # Disk name
-        [ "$sys_d_nme" ] || sys_d_nme="$efi_d_nme"          # "Boot" disk name
+        [ "$sys_d_nme" != "" ] || sys_d_nme="$efi_d_nme"    # "Boot" disk name
         efi_p_num="${efi_p_nme#$sys_d_nme}"
         continue
     }
-    [ "$MOUNTPOINT" == '/boot' ] && {                       # BOOT
+    [ "$MOUNTPOINT" == '/boot' ] && {
+        # BOOT
         boot_p_nme="$KNAME"
         boot_p_siz="$SIZE"
         boot_d_nme="${boot_p_nme%[0-9]}"
@@ -270,7 +280,8 @@ while read KNAME TYPE SIZE FSTYPE MOUNTPOINT PARTLABEL; do
         boot_p_num="${boot_p_nme#$boot_d_nme}"
         continue
     }
-    [ "$FSTYPE" == 'swap' ] && {                            # SWAP
+    [ "$FSTYPE" == 'swap' ] && {
+        # SWAP
         swap_p_nme="$KNAME"
         swap_p_siz="$SIZE"
         swap_d_nme="${swap_p_nme%[0-9]}"
@@ -287,16 +298,57 @@ done < <(( [ "$sys_d_nme" ] &&
 
 [ $efi_p_nme ] || die "FATAL: Only systems with EFI/ESP are supported\n"
 
-printl "UEFI partition name: [%s], size: [%s], disk: [%s], number: [%s]\n" \
+printl "UEFI partition name: %s, size: %s, disk: %s, number: %s\n" \
     "$efi_p_nme" "$efi_p_siz" "$efi_d_nme" "$efi_p_num"
-printl "BOOT partition name: [%s], size: [%s], disk: [%s], number: [%s]\n" \
+printl "BOOT partition name: %s, size: %s, disk: %s, number: %s\n" \
     "$boot_p_nme" "$boot_p_siz" "$boot_d_nme" "$boot_p_num"
-printl "SWAP partition name: [%s], size: [%s], disk: [%s], number: [%s]\n" \
+printl "SWAP partition name: %s, size: %s, disk: %s, number: %s\n" \
     "$swap_p_nme" "$swap_p_siz" "$swap_d_nme" "$swap_p_num"
 
 # Calculate potential free space
 dest_space=`expr '(' $efi_p_siz + ${boot_p_siz=0} + ${swap_p_siz=0} ')' '/' 1048576`
 [ $dest_space -lt $freebsd_total_space ] && die "FATAL: Not enough disk space\n"
+
+# Identify a Linux distribution we are running on
+chk_cmd hostnamectl hostnamectl || die "FATAL: Unable to find hostnamectl\n"
+[ ! $release_name ] && 
+    release_name=`$hostnamectl | $awk -F ': ' '/Operating System/ {print $2}'`
+printl "release_name=%s\n" "$release_name"
+[ ! $arch_name ] && chk_arch arch_name
+printl "arch_name=%s\n" "$arch_name"
+
+[ ! $release_family ] && chk_os release_family "$release_name"
+printl "release_family=%s\n" "$release_family"
+
+# Install packages
+case "$release_family" in
+    debian) 
+        pkg_zfs_debian ;;
+    redhat)
+        chk_cmd dnf "dnf yum" || die "FATAL: Unable to find DNF packet manager\n"
+        pkg_zfs_redhat ;;
+esac
+
+/sbin/modprobe zfs || die "FATAL: Unable to load ZFS module\n"
+
+# Get network parameters
+iface_name=`ip route show default | awk '/default/ {print $5}'`
+deftrouter=`ip route show default | awk '/default/ {print $3}'`
+iface_ipv4=`ip -4 address show "$iface_name" | awk '$1 == "inet" {print $2}'`
+iface_ipv6=`ip -6 address show "$iface_name" | awk '$1 == "inet6" {print $2; exit 0}'`
+iface_mac=`ip link show "$iface_name" | awk '/ether/ {print $2}'`
+# TODO: utilize chk_cmd() to switch between ip/netstat/ifconfig
+# iface_name=`netstat -nr | awk '$1 == "0.0.0.0" || $1 == "Default" {print $8}'`
+# iface_ipv4=`ifconfig $iface_name | awk '$1 == "inet" {print $2}'`
+# iface_ipv6=`ifconfig $iface_name | awk '$1 == "inet6" {print $2; exit 0}'`
+# iface_mac=`cat /sys/class/net/"$iface_name"/address`
+# iface_mac=`ifconfig enp0s3 |awk '$1 == "ether" {print $2}'`
+
+[ $interactive ] && {
+    printf "\nPress ENTER to repartition the drive and install FreeBSD over\n"
+    printf "Linux, or hit ^C to interrupt the operation!\n"
+    read
+}
 
 # If exist, umount/swapoff and delete partitions
 # TODO: use chk_cmd() to select fdisk/parted/etc 
@@ -315,31 +367,17 @@ zpool_p_num=`printf "n\n\n\n\nw\n" | fdisk "/dev/$sys_d_nme" |
 zpool_p_nme="$sys_d_nme""$zpool_p_num"
 printf "t\n%s\n36\nw\n" "$zpool_p_num" | fdisk "/dev/$sys_d_nme"
 
-# Identify a Linux distribution we are running on
-chk_cmd hostnamectl hostnamectl || die "FATAL: Unable to find hostnamectl\n"
-[ ! $release_name ] && 
-    release_name=`$hostnamectl | $awk -F ': ' '/Operating System/ {print $2}'`
-printl "release_name=%s\n" "$release_name"
-[ ! $arch_name ] && chk_arch arch_name
-printl "arch_name=%s\n" "$arch_name"
+install_freebsd  
 
-[ ! $release_family ] && chk_os release_family "$release_name"
-printl "release_family=%s\n" "$release_family"
+grep -q -i "version=28" <<< "$zpool_options" && {
+    printf "Note, zpool is created with basic options for compatibility.\n"
+    printf "Don\'t forget to run: zpool upgrade -a\n"
+}
 
-# Install the stuff
-case "$release_family" in
-    debian) 
-        do_debian ;;
-    redhat)
-        chk_cmd dnf "dnf yum" || die "FATAL: Unable to find DNF packet manager\n"
-        do_redhat ;;
-esac
+[ $interactive ] && {
+    printf "\nPress ENTER to reboot into FreeBSD or hit ^C to escape into shell.\n"
+    printf "Think twice, this might be your last chance to do it!\n\n"
+    read
+}
 
-printf "\nPress ENTER to reboot into FreeBSD or hit ^C if you forgot something!\n"
-printf "Think twice, this might be your last chance to do it!\n\n"
-
-grep -q -i "version=28" <<< "$zpool_options" && 
-    printf "Note, zpool is created with basic options for compatibility.\n"\
-"Don\'t forget to run: zpool upgrade -a\n"
-read
 reboot

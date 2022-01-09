@@ -23,3 +23,8 @@
 2022.01.07    v0.7    Mikhail Zakharov <zmey20000@yahoo.com>
   * Experimental support for EFI based amd and amd64 architectures
   * Minor code enhancements
+
+2022.01.09    v0.8    Mikhail Zakharov <zmey20000@yahoo.com>
+  * Debian support intoduced
+  * Code rearrangement, interactive mode, decoaration
+  
