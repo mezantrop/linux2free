@@ -138,11 +138,12 @@ install_freebsd() {
 
     zpool set bootfs=zroot/ROOT/default zroot
     # Download/unpack FreeBSD base and kernel sets 
-    # TODO: Perform chk_cmd() and detect wget|curl...
+    chk_cmd fetch "wget" && fetch="wget -O - " || chk_cmd fetch "curl" || 
+        die "FATAL: Either wget or curl is required to download FreeBSD files"
     cd "$freebsd_zfs"
-    wget -O - "$freebsd_download/$arch_name/$freebsd_release-RELEASE/base.txz" | 
+    "$fetch" "$freebsd_download/$arch_name/$freebsd_release-RELEASE/base.txz" | 
         tar Jxvf -
-    wget -O - "$freebsd_download/$arch_name/$freebsd_release-RELEASE/kernel.txz" |
+    "$fetch" "$freebsd_download/$arch_name/$freebsd_release-RELEASE/kernel.txz" |
         tar Jxvf -
 
     # Install boot EFI loader and configure basic startup scripts
@@ -213,7 +214,13 @@ EOF
 
 pkg_zfs_redhat() {
     # Install ZFS on Redhat
-    dnf upgrade -y  # We must be sure to have Kernel and ZFS modules in sync!
+
+    # We must be sure to have Kernel and ZFS modules in sync!
+    dnf upgrade -y | grep 'Nothing to do' || {
+        printf "\nPress ENTER to reboot and apply Linux updates or hit ^C to abort\n"
+        read
+        reboot
+    }       
 
     # Install ZFS packages
     for m in `seq 10 -1 1`; do
@@ -352,9 +359,9 @@ iface_mac=`ip link show "$iface_name" | awk '/ether/ {print $2}'`
 
 # If exist, umount/swapoff and delete partitions
 # TODO: use chk_cmd() to select fdisk/parted/etc 
-[ $efi_p_nme ] && umount "/dev/$efi_p_nme"
-[ $boot_p_nme ] && umount "/dev/$boot_p_nme"
-[ $swap_p_nme ] && swapoff "/dev/$swap_p_nme"
+[ "$efi_p_nme" != "" ] && umount "/dev/$efi_p_nme"
+[ "$boot_p_nme" != "" ] && umount "/dev/$boot_p_nme"
+[ "$swap_p_nme" != "" ] && swapoff "/dev/$swap_p_nme"
 for p in $efi_p_num $boot_p_num $swap_p_num; do
    [ $p ] && printf "d\n$p\nw\n" | fdisk "/dev/$sys_d_nme"
 done
