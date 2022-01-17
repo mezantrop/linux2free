@@ -19,7 +19,8 @@
 verbose=1                                       # Be verbose or not
 interactive=1                                   # Ask for confirmation or not
 
-freebsd_total_space=512                         # 512M for kernel + base
+# freebsd_total_space=512                       # Space for kernel + base
+freebsd_total_space=548                         # TODO: fit in 512 MB!
 freebsd_efi_space=10                            # 10M for EFI loader
 
 # Download locations for Linux ZFS packages and FreeBSD distributions
@@ -31,7 +32,7 @@ zpool_options=""                                # Additional ZFS options
 
 # -- System defaults --------------------------------------------------------- #
 script_name="linux2free.sh"
-script_version="0.8"
+script_version="0.10"
 
 freebsd_efi="/freebsd.efi"                      # Temporary mountpoints on Linux
 freebsd_zfs="/freebsd.zfs"                      # for FreeBSD EFI and ZFS
@@ -43,6 +44,10 @@ export L2FPID=$$
 # -- Useful functions -------------------------------------------------------- #
 die() { printf "$@"; kill -s TERM $L2FPID; }
 printl() { [ $verbose -eq 1 ] && printf "$@"; }
+strcasestr() {
+    # Checks if $2 - needle substring exists in $1 - haystack. Case insensitive
+    grep -q -i "$2" <<< "$1"
+}
 
 usage() {
     printf "Usage:\n\t%s [-d /dev/drive] [-R XX.Y] [-A arch] [-i] [-hv]\n\n" "$script_name"
@@ -70,14 +75,14 @@ chk_cmd() {
 }
 
 chk_os() {
-    # Return release family by $2
+    # Return release family ($1) by Release name string ($2)
     [ "$1" -a "$2" ] || die "FATAL: Wrong chk_os() usage!\n"
     case "$2" in
-        *[cC][eE][nN][tT][oO][sS]*)     eval $1='redhat'   ;;
-        *[fF][eE][dD][oO][rR][aA]*)     eval $1="redhat"   ;;
-        *[rR][eE][dD]*[hH][aA][tT]*)    eval $1="redhat"   ;;
-        *[dD][eE][bB][iI][aA][nN]*)     eval $1="debian"   ;;
-        *[uU][bB][uU][nN][tT][uU]*)     eval $1="debian"   ;;
+        *[cC][eE][nN][tT][oO][sS]*)     eval $1="redhat" ;;
+        *[fF][eE][dD][oO][rR][aA]*)     eval $1="redhat" ;;
+        *[rR][eE][dD]*[hH][aA][tT]*)    eval $1="redhat" ;;
+        *[dD][eE][bB][iI][aA][nN]*)     eval $1="debian" ;;
+        *[uU][bB][uU][nN][tT][uU]*)     eval $1="debian" ;;
         *) die "FATAL: Unsupported release name: %s\n" "$2" ;;
     esac
 }
@@ -141,9 +146,10 @@ install_freebsd() {
     chk_cmd fetch "wget" && fetch="wget -O - " || chk_cmd fetch "curl" || 
         die "FATAL: Either wget or curl is required to download FreeBSD files"
     cd "$freebsd_zfs"
-    "$fetch" "$freebsd_download/$arch_name/$freebsd_release-RELEASE/base.txz" | 
+    $fetch "$freebsd_download/$arch_name/$freebsd_release-RELEASE/base.txz" | 
         tar Jxvf -
-    "$fetch" "$freebsd_download/$arch_name/$freebsd_release-RELEASE/kernel.txz" |
+        # tar Jxvf - --exclude './usr/include/*' --exclude './usr/tests/*' --exclude './usr/share/i18n/*' --exclude './usr/share/locale/*' --exclude './usr/share/dict/*' --exclude './usr/share/locale/doc' --exclude './usr/share/dict/examples' --exclude './usr/share/man/*'
+    $fetch "$freebsd_download/$arch_name/$freebsd_release-RELEASE/kernel.txz" |
         tar Jxvf -
 
     # Install boot EFI loader and configure basic startup scripts
@@ -203,8 +209,8 @@ Pin-Priority: 990
 EOF
 
     export DEBIAN_FRONTEND=noninteractive
-    apt-get update
-    apt-get dist-upgrade
+    apt-get -y update
+    apt-get -y dist-upgrade
     apt-get -y install dpkg-dev linux-headers-$(uname -r) linux-image-amd64
     apt-get -y install zfs-dkms zfsutils-linux
 
@@ -212,12 +218,21 @@ EOF
     apt-get install dosfstools
 }
 
+pkg_zfs_ubuntu() {
+    # Install ZFS on Ubuntu
+    apt-get -y update
+    apt-get -y install zfsutils-linux
+}
+
 pkg_zfs_redhat() {
     # Install ZFS on Redhat
 
     # We must be sure to have Kernel and ZFS modules in sync!
     dnf upgrade -y | grep 'Nothing to do' || {
-        printf "\nPress ENTER to reboot and apply Linux updates or hit ^C to abort\n"
+        printf "================================================================================\n"
+        printf "Press ENTER to reboot and apply Linux updates, then start linux2free.sh manually\n"
+        printf "to install FreeBSD. Hit ^C anytime to abort the script.\n"
+        printf "================================================================================\n"
         read
         reboot
     }       
@@ -267,8 +282,8 @@ done
 # BEWARE: There are a lot of silly assumptions. Proceed with caution!
 # TODO: Make disk/partitions identification more intelligent (again)
 while read KNAME TYPE SIZE FSTYPE MOUNTPOINT PARTLABEL; do
-    grep -q -i "EFI" <<< "$PARTLABEL" || grep -q -i "EFI" <<< "$MOUNTPOINT" && 
-    grep -q -i "fat" <<< "$FSTYPE" && {                     # EFI partition
+    strcasestr "$PARTLABEL" "EFI" || strcasestr "$MOUNTPOINT" "EFI" &&
+    strcasestr "$FSTYPE" "fat" && {                         # EFI partition
         efi_p_nme="$KNAME"                                  # Part name
         efi_p_siz="$SIZE"                                   # Part size
         efi_d_nme="${efi_p_nme%[0-9]}"                      # Disk name
@@ -314,7 +329,8 @@ printl "SWAP partition name: %s, size: %s, disk: %s, number: %s\n" \
 
 # Calculate potential free space
 dest_space=`expr '(' $efi_p_siz + ${boot_p_siz=0} + ${swap_p_siz=0} ')' '/' 1048576`
-[ $dest_space -lt $freebsd_total_space ] && die "FATAL: Not enough disk space\n"
+[ $dest_space -lt $freebsd_total_space ] && 
+    die "FATAL: Not enough disk space. Required/available: $freebsd_total_space/$dest_space MB\n"
 
 # Identify a Linux distribution we are running on
 chk_cmd hostnamectl hostnamectl || die "FATAL: Unable to find hostnamectl\n"
@@ -329,8 +345,10 @@ printl "release_family=%s\n" "$release_family"
 
 # Install packages
 case "$release_family" in
-    debian) 
-        pkg_zfs_debian ;;
+    debian)
+        strcasestr "$release_name" "ubuntu" && pkg_zfs_ubuntu
+        strcasestr "$release_name" "debian" && pkg_zfs_debian
+        ;;
     redhat)
         chk_cmd dnf "dnf yum" || die "FATAL: Unable to find DNF packet manager\n"
         pkg_zfs_redhat ;;
@@ -352,8 +370,10 @@ iface_mac=`ip link show "$iface_name" | awk '/ether/ {print $2}'`
 # iface_mac=`ifconfig enp0s3 |awk '$1 == "ether" {print $2}'`
 
 [ $interactive ] && {
-    printf "\nPress ENTER to repartition the drive and install FreeBSD over\n"
+    printf "================================================================================\n"
+    printf "Press ENTER to repartition the drive and install FreeBSD over\n"
     printf "Linux, or hit ^C to interrupt the operation!\n"
+    printf "================================================================================\n"
     read
 }
 
@@ -376,14 +396,16 @@ printf "t\n%s\n36\nw\n" "$zpool_p_num" | fdisk "/dev/$sys_d_nme"
 
 install_freebsd  
 
-grep -q -i "version=28" <<< "$zpool_options" && {
+strcasestr "$zpool_options" "version=28" && {
     printf "Note, zpool is created with basic options for compatibility.\n"
     printf "Don\'t forget to run: zpool upgrade -a\n"
 }
 
 [ $interactive ] && {
+    printf "================================================================================\n"
     printf "\nPress ENTER to reboot into FreeBSD or hit ^C to escape into shell.\n"
-    printf "Think twice, this might be your last chance to do it!\n\n"
+    printf "Think twice, this might be your last chance to change yor mind!\n"
+    printf "================================================================================\n"
     read
 }
 

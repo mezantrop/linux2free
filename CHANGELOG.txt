@@ -31,3 +31,7 @@
 2022.01.13    v0.9    Mikhail Zakharov <zmey20000@yahoo.com>
   * chk_cmd() to select wget|curl 
   * reboot after installing updates with dnf upgrade -y
+
+2022.01.17    v0.10    Mikhail Zakharov <zmey20000@yahoo.com>
+  * fetch: wget/curl fixed
+  * Ubuntu preparation work
