@@ -35,3 +35,7 @@
 2022.01.17    v0.10    Mikhail Zakharov <zmey20000@yahoo.com>
   * fetch: wget/curl fixed
   * Ubuntu preparation work
+
+2022.01.21    v0.11    Mikhail Zakharov <zmey20000@yahoo.com>
+  * Support booting FreeBSD from ZFS root volumes with GZIP compression
+  * Support Ubuntu with the small EFI partition 

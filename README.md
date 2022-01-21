@@ -19,10 +19,9 @@ a VirtualBOX machine.
 Do not run it in production or on the system that has any value. You have been warned!**
 1. The script can be run on console or via SSH, but network connection required 
 anyway, because linux2free.sh downloads files from Internet
-2. Currently the linux2free.sh script supports UEFI only boot. Sorry for MBR scheme,
+2. Currently the linux2free.sh supports UEFI only boot. Sorry for MBR scheme,
 perhaps someday I'll add it (or not)
-3. Only Redhat based Linux distributions are supported at the moment. Debian 
-will come someday (probably)
+3. A very small list of Linux families are supported: Redhat/Centos and Debian/Ubuntu
 4. The resulted FreeBSD system is very minimalistic. It uses a simple custom 
 starup scripts to bring up network interfaces and start sshd, you have to 
 configure the system and install additional packages yourself
@@ -40,9 +39,6 @@ wget https://raw.githubusercontent.com/mezantrop/linux2free/master/linux2free.sh
 ```
 
 ## TODO
- - [x] Allow root to ssh in remotely
- - [x] Set default router
- - [ ] Support more Linux distributions
  - [ ] Make the code better (Oh, there are plenty things to do! See TODO remarks over the script body)
  - [ ] Write a more serious README
  - [ ] Import SSH keys as suggested by [PkHolm](https://www.reddit.com/r/freebsd/comments/rpks7e/comment/hq545yh/?utm_source=reddit&utm_medium=web2x&context=3)

@@ -32,12 +32,12 @@ zfs_compression="on"                            # on|off|zle|lzjb|lz4|gzip|gzip-
 
 # -- System defaults --------------------------------------------------------- #
 script_name="linux2free.sh"
-script_version="0.10"
+script_version="0.11"
 
 freebsd_efi="/freebsd.efi"                      # Temporary mountpoints on Linux
 freebsd_zfs="/freebsd.zfs"                      # for FreeBSD EFI and ZFS
 
-zfsgziploader=
+zfsgziploader="https://github.com/mezantrop/linux2free/raw/master/loader.efi"
 
 # ---------------------------------------------------------------------------- #
 trap "exit 1" TERM
@@ -146,7 +146,7 @@ install_freebsd() {
     zpool set bootfs=zroot/ROOT/default zroot
     # Download/unpack FreeBSD base and kernel sets 
     chk_cmd fetch "wget" && fetch="wget -O - " || chk_cmd fetch "curl" || 
-        die "FATAL: Either wget or curl is required to download FreeBSD files"
+        die "FATAL: Either wget or curl is required to download FreeBSD files\n"
     cd "$freebsd_zfs"
     $fetch "$freebsd_download/$arch_name/$freebsd_release-RELEASE/base.txz" | 
         tar Jxvf -
@@ -332,12 +332,15 @@ printl "SWAP partition name: %s, size: %s, disk: %s, number: %s\n" \
 
 # Calculate potential free space
 dest_space=`expr '(' $efi_p_siz + ${boot_p_siz=0} + ${swap_p_siz=0} ')' '/' 1048576`
-[ $dest_space -lt $freebsd_total_space -a $dest_space -ge 512 -a 
-    freebsd_releasestrcasestr "$freebsd_release" "13." ] && {
+if [ $dest_space -lt $freebsd_total_space -a $dest_space -ge 512 ]; then
+    strcasestr "$freebsd_release" "13." && {
         zfs_compression="gzip-9" 
-        printl "WARNING: Due to low space, setting compression to: $zfs_compression" } ||
-        [ $dest_space -lt $freebsd_total_space ] &&
-            die "FATAL: Not enough disk space. Required/available: $freebsd_total_space/$dest_space MB\n"
+        printf "WARNING: Due to low space, setting compression to: $zfs_compression\n"
+    } || die "FATAL: Supporting ZFS gzip compression only on amd64 and FreeBSD 13.x\n"
+else
+    [ $dest_space -lt $freebsd_total_space ] &&
+        die "FATAL: Not enough disk space. Required/available: $freebsd_total_space/$dest_space MB\n"
+fi
 
 # Identify a Linux distribution we are running on
 chk_cmd hostnamectl hostnamectl || die "FATAL: Unable to find hostnamectl\n"
