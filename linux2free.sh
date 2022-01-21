@@ -19,8 +19,7 @@
 verbose=1                                       # Be verbose or not
 interactive=1                                   # Ask for confirmation or not
 
-# freebsd_total_space=512                       # Space for kernel + base
-freebsd_total_space=548                         # TODO: fit in 512 MB!
+freebsd_total_space=548                         # Space for kernel + base
 freebsd_efi_space=10                            # 10M for EFI loader
 
 # Download locations for Linux ZFS packages and FreeBSD distributions
@@ -29,6 +28,7 @@ freebsd_download="https://download.freebsd.org/ftp/releases"
 freebsd_release="13.0"                          # Desired FreeBSD release
 
 zpool_options=""                                # Additional ZFS options
+zfs_compression="on"                            # on|off|zle|lzjb|lz4|gzip|gzip-[1-9] 
 
 # -- System defaults --------------------------------------------------------- #
 script_name="linux2free.sh"
@@ -36,6 +36,8 @@ script_version="0.10"
 
 freebsd_efi="/freebsd.efi"                      # Temporary mountpoints on Linux
 freebsd_zfs="/freebsd.zfs"                      # for FreeBSD EFI and ZFS
+
+zfsgziploader=
 
 # ---------------------------------------------------------------------------- #
 trap "exit 1" TERM
@@ -116,7 +118,7 @@ install_freebsd() {
     mkpool="zpool create -f -o altroot=$freebsd_zfs $zpool_options zroot $zpool_p_nme"
     $mkpool
 
-    zfs set compression=on zroot
+    zfs set compression="$zfs_compression" zroot
     zfs create -o mountpoint=none zroot/ROOT
     zfs create -o mountpoint=/ -o canmount=noauto zroot/ROOT/default
 
@@ -148,12 +150,13 @@ install_freebsd() {
     cd "$freebsd_zfs"
     $fetch "$freebsd_download/$arch_name/$freebsd_release-RELEASE/base.txz" | 
         tar Jxvf -
-        # tar Jxvf - --exclude './usr/include/*' --exclude './usr/tests/*' --exclude './usr/share/i18n/*' --exclude './usr/share/locale/*' --exclude './usr/share/dict/*' --exclude './usr/share/locale/doc' --exclude './usr/share/dict/examples' --exclude './usr/share/man/*'
     $fetch "$freebsd_download/$arch_name/$freebsd_release-RELEASE/kernel.txz" |
         tar Jxvf -
 
     # Install boot EFI loader and configure basic startup scripts
-    cp "$freebsd_zfs"/boot/loader.efi "$freebsd_efi"/EFI/BOOT/"$efi_filename"
+        [ "$zfs_compression" == "gzip-9" ] && 
+            $fetch $zfsgziploader > "$freebsd_efi"/EFI/BOOT/"$efi_filename" ||
+            cp "$freebsd_zfs"/boot/loader.efi "$freebsd_efi"/EFI/BOOT/"$efi_filename"
 
     echo zfs_load="YES" >> "$freebsd_zfs"/boot/loader.conf
 
@@ -329,8 +332,12 @@ printl "SWAP partition name: %s, size: %s, disk: %s, number: %s\n" \
 
 # Calculate potential free space
 dest_space=`expr '(' $efi_p_siz + ${boot_p_siz=0} + ${swap_p_siz=0} ')' '/' 1048576`
-[ $dest_space -lt $freebsd_total_space ] && 
-    die "FATAL: Not enough disk space. Required/available: $freebsd_total_space/$dest_space MB\n"
+[ $dest_space -lt $freebsd_total_space -a $dest_space -ge 512 -a 
+    freebsd_releasestrcasestr "$freebsd_release" "13." ] && {
+        zfs_compression="gzip-9" 
+        printl "WARNING: Due to low space, setting compression to: $zfs_compression" } ||
+        [ $dest_space -lt $freebsd_total_space ] &&
+            die "FATAL: Not enough disk space. Required/available: $freebsd_total_space/$dest_space MB\n"
 
 # Identify a Linux distribution we are running on
 chk_cmd hostnamectl hostnamectl || die "FATAL: Unable to find hostnamectl\n"
