@@ -32,7 +32,7 @@ zfs_compression="on"                            # on|off|zle|lzjb|lz4|gzip|gzip-
 
 # -- System defaults --------------------------------------------------------- #
 script_name="linux2free.sh"
-script_version="0.11"
+script_version="0.12"
 
 freebsd_efi="/freebsd.efi"                      # Temporary mountpoints on Linux
 freebsd_zfs="/freebsd.zfs"                      # for FreeBSD EFI and ZFS
@@ -154,7 +154,7 @@ install_freebsd() {
         tar Jxvf -
 
     # Install boot EFI loader and configure basic startup scripts
-        [ "$zfs_compression" == "gzip-9" ] && 
+        [ "$zfs_compression" == "zstd-9" ] && 
             $fetch $zfsgziploader > "$freebsd_efi"/EFI/BOOT/"$efi_filename" ||
             cp "$freebsd_zfs"/boot/loader.efi "$freebsd_efi"/EFI/BOOT/"$efi_filename"
 
@@ -334,7 +334,7 @@ printl "SWAP partition name: %s, size: %s, disk: %s, number: %s\n" \
 dest_space=`expr '(' $efi_p_siz + ${boot_p_siz=0} + ${swap_p_siz=0} ')' '/' 1048576`
 if [ $dest_space -lt $freebsd_total_space -a $dest_space -ge 512 ]; then
     strcasestr "$freebsd_release" "13." && {
-        zfs_compression="gzip-9" 
+        zfs_compression="zstd-9" 
         printf "WARNING: Due to low space, setting compression to: $zfs_compression\n"
     } || die "FATAL: Supporting ZFS gzip compression only on amd64 and FreeBSD 13.x\n"
 else

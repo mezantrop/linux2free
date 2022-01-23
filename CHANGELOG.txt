@@ -39,3 +39,6 @@
 2022.01.21    v0.11    Mikhail Zakharov <zmey20000@yahoo.com>
   * Support booting FreeBSD from ZFS root volumes with GZIP compression
   * Support Ubuntu with the small EFI partition 
+
+2022.01.23    v0.12    Mikhail Zakharov <zmey20000@yahoo.com>
+  * Replaced gzip-9 with zstd-9 for better compression results
