@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ---------------------------------------------------------------------------- #
-# linux2free.sh - Linux to FreeBSD upgrade script                              #
+# l2f.sh - Linux to FreeBSD upgrade script                                     #
 # ---------------------------------------------------------------------------- #
 
 # ---------------------------------------------------------------------------- #
@@ -31,7 +31,7 @@ zpool_options=""                                # Additional ZFS options
 zfs_compression="on"                            # on|off|zle|lzjb|lz4|gzip|gzip-[1-9] 
 
 # -- System defaults --------------------------------------------------------- #
-script_name="linux2free.sh"
+script_name="l2f.sh"
 script_version="0.12"
 
 freebsd_efi="/freebsd.efi"                      # Temporary mountpoints on Linux
@@ -233,7 +233,7 @@ pkg_zfs_redhat() {
     # We must be sure to have Kernel and ZFS modules in sync!
     dnf upgrade -y | grep 'Nothing to do' || {
         printf "================================================================================\n"
-        printf "Press ENTER to reboot and apply Linux updates, then start linux2free.sh manually\n"
+        printf "Press ENTER to reboot and apply Linux updates, then start l2f.sh manually\n"
         printf "to install FreeBSD. Hit ^C anytime to abort the script.\n"
         printf "================================================================================\n"
         read

@@ -1,48 +1,42 @@
 # Remote Linux to FreeBSD upgrade script
-## linux2free.sh overwrites your Linux with FreeBSD over SSH connection
 
-Time runs fast, MBR evolved to GPT, BIOS to UEFI and I followed the footsteps 
-of good old Depenguinator 
-[2.0](https://www.daemonology.net/blog/2008-01-29-depenguinator-2.0.html) and 
-[3.0](https://github.com/allanjude/depenguinator) to bring some Christmas magic
-to the end of 2021 year.
+l2f.sh script does the following:
+1. Downloads from Internet and installs OpenZFS packages on the Linux machine
+2. Finds a space that can be freed and creates a ZFS-pool on the drive
+3. Downloads and extracts _base_ and _kernel_ FreeBSD distributions
+4. Creates minimalistic custom FreeBSD configuration, sufficient for subsequent SSH connection
+5. Installs FreeBSD EFI loader and creates a corresponding UEFI entry
+6. Reboots the machine into FreeBSD
 
-This is a very early draft, the script abilities are very limited, there are 
-a lot things to implement and many bugs to fix, but it ~~runs fine on my laptop~~ 
-successfully installs FreeBSD 13.0 over the default CentOS Linux 8 on 
-a VirtualBOX machine.
+**Warning! Do not try l2f.sh on production and on any system that has any value.
+This is an early draft of the script. It contains bugs and can make your remote
+server unusable, destroy your OS, data and ruin entire life.**
 
-[![linux2free.sh in action](https://img.youtube.com/vi/q8GlmyK70VE/0.jpg)](https://www.youtube.com/watch?v=q8GlmyK70VE)
+[![l2f.sh in action](https://img.youtube.com/vi/q8GlmyK70VE/0.jpg)](https://www.youtube.com/watch?v=q8GlmyK70VE)
 
-## NOTES
-0. **The script is extremely dangerous, it can easily ruin your OS, data and life.
-Do not run it in production or on the system that has any value. You have been warned!**
-1. The script can be run on console or via SSH, but network connection required 
-anyway, because linux2free.sh downloads files from Internet
-2. Currently the linux2free.sh supports UEFI only boot. Sorry for MBR scheme,
-perhaps someday I'll add it (or not)
-3. A very small list of Linux families are supported: Redhat/Centos and Debian/Ubuntu
-4. The resulted FreeBSD system is very minimalistic. It uses a simple custom 
-starup scripts to bring up network interfaces and start sshd, you have to 
-configure the system and install additional packages yourself
-5. linux2free created a boot EFI partition and a small ZFS filesystem for FreeBSD 
-to start up, but the rest of the space formerly used by Linux has to be 
-redistributed manually.
+## Features, limitations and notes
+* Supports UEFI only machines with recent Redhat and Debian distribution families 
+including Centos 8, Debian 11 and Ubuntu 21.10
+* l2f.sh can run on console or via SSH. Network connection is required to 
+downloads distribution and package files from 
+* l2f.sh creates a boot EFI partition and a small ZFS filesystem for FreeBSD
+to start up. The rest of the space, formerly used by Linux, has to be 
+redistributed manually. FreeBSD has to be configured, as well as, additional
+dist files / packages must be installed manually
 
-## Installation
-
+## Usage
 On Linux machine run:
 ```
-sudo dnf upgrade -y
-reboot
-wget https://raw.githubusercontent.com/mezantrop/linux2free/master/linux2free.sh && sudo bash linux2free.sh
+wget https://raw.githubusercontent.com/mezantrop/linux2free/master/l2f.sh && sudo bash l2f.sh
 ```
 
 ## TODO
- - [ ] Make the code better (Oh, there are plenty things to do! See TODO remarks over the script body)
- - [ ] Write a more serious README
  - [ ] Import SSH keys as suggested by [PkHolm](https://www.reddit.com/r/freebsd/comments/rpks7e/comment/hq545yh/?utm_source=reddit&utm_medium=web2x&context=3)
  - [ ] Migrate some data from Linux filesystems as [tux2bsd](https://www.reddit.com/user/tux2bsd) suggested
 
-Don't hesitate to enchance, report bugs or call me, 
+## Similar projects
+* Depenguinator [2.0](https://www.daemonology.net/blog/2008-01-29-depenguinator-2.0.html) and [3.0](https://github.com/allanjude/depenguinator)
+* [mfsBSD / mfslinux](https://mfsbsd.vx.sk)
+
+Don't hesitate to enhance, report bugs or call me, 
 Mikhail Zakharov <zmey20000@yahoo.com>

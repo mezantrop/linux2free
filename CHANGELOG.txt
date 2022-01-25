@@ -42,3 +42,8 @@
 
 2022.01.23    v0.12    Mikhail Zakharov <zmey20000@yahoo.com>
   * Replaced gzip-9 with zstd-9 for better compression results
+
+2022.01.25    v0.13    Mikhail Zakharov <zmey20000@yahoo.com>
+  * Script renamed: linux2free.sh -> l2f.sh
+  * README.md rewritten to be less vulgar; Added the link to mfsBSD as
+    https://github.com/click0 hinted
