@@ -18,7 +18,7 @@ server unusable, destroy your OS, data and ruin entire life.**
 * Supports UEFI only machines with recent Redhat and Debian distribution families 
 including Centos 8, Debian 11 and Ubuntu 21.10
 * l2f.sh can run on console or via SSH. Network connection is required to 
-downloads distribution and package files from 
+downloads distribution and package files from internet
 * l2f.sh creates a boot EFI partition and a small ZFS filesystem for FreeBSD
 to start up. The rest of the space, formerly used by Linux, has to be 
 redistributed manually. FreeBSD has to be configured, as well as, additional
