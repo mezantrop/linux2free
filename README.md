@@ -1,5 +1,7 @@
 # Remote Linux to FreeBSD upgrade script
 
+<a href="https://www.buymeacoffee.com/mezantrop" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="41" width="174"></a>
+
 l2f.sh script does the following:
 1. Downloads from Internet and installs OpenZFS packages on the Linux machine
 2. Finds a space that can be freed and creates a ZFS-pool on the drive
